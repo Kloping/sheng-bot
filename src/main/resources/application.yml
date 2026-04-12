@@ -117,7 +117,7 @@ logging:
     path: logs
   level:
     root: info
-    top.kloping.code.gdpl2112.bot.*: debug
+    top.kloping.code.*: debug
   logback:
     rollingpolicy:
       max-file-size: 10MB
