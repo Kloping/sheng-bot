@@ -1,0 +1,124 @@
+spring:
+  application:
+    name: sheng-bot
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/supersheng?characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true
+    username: root
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: ${OPENAI_BASE_URL}
+      chat:
+        completions-path: /v1/chat/completions
+        options:
+          model: ${OPENAI_MODEL} # 必须多模态 能传入 图片文本的
+          temperature: 0.1
+          max-tokens: 3000
+          stream-usage: false
+      embedding:
+        base-url: ${OPENAI_EMBEDING_BASE_URL} # 更适合配置多厂商
+        embeddings-path: /v1/embeddings # embedding
+        api-key: ${EMBEDING_MODE_API_KEY}
+        options:
+          model: ${EMBEDING_MODE_MODEL}
+          dimensions: ${spring.ai.vectorstore.milvus.embeddingDimension}
+    vectorstore:
+      milvus:
+        client:
+          host: ${MILVUS_HOST}
+          port: 9530
+          username: root
+          password: ${MILVUS_PASSWORD}
+        databaseName: default
+        collectionName: ${MILVUS_COLLECTION_NAME}
+        idFieldName: id
+        auto-id: true
+        embeddingDimension: 1024
+        indexType: IVF_FLAT
+        metricType: COSINE
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 0
+      timeout: 60000
+      jedis:
+        pool:
+          max-active: 8         # 限制Redis连接数
+          max-idle: 4
+
+# 机器人配置
+bot:
+  # QQ号
+  account: ${QQ_ID}
+  # 是否启用
+  enabled: true
+  # 连接配置 推荐 napcat
+  connection:
+    # 连接方式: ws(主动WebSocket连接) / reversed(被动连接)
+    type: ${BOT_CONNECTION_TYPE:ws}
+    # 主动连接时的地址
+    ip: ${BOT_CONNECTION_IP}
+    # 被动连接时的端口
+    port: ${BOT_CONNECTION_PORT}
+    # access-token
+    token: ${BOT_CONNECTION_TOKEN}
+    # 心跳检测间隔(秒)
+    heart: 45
+    # 重试次数
+    retry-times: 3
+    # 重试等待时间(毫秒)
+    retry-wait-mills: 7000
+  # 群聊配置
+  group:
+    group-id: ${TEST_GROUP_ID}
+    # 允许响应的群列表（为空则响应所有群）
+    allowed-groups: [  ]
+    # 黑名单群列表（在黑名单内则禁用全部机器人功能）
+    blacklisted-groups: [ ]
+    # 是否响应所有消息
+    respond-all: false
+  # 私聊配置
+  private:
+    # 是否响应私聊
+    enabled: true
+    # 允许私聊的用户列表（为空则允许所有）
+    allowed-users: [ ]
+  # AI人格设定
+  personality:
+    name: "小生"
+    description: "你是一个友好、乐于助人的QQ机器人助手。回复要简洁明了，适合在聊天环境中交流。"
+
+
+top.kloping.ai.mcp:
+  servers:
+    # 自定义 mcp server名字
+    WebSearch:
+      server: https://dashscope.aliyuncs.com
+      endpoint: /api/v1/mcps/WebSearch/sse
+      token: ${YOUR_DASHSCOPE_TOKEN}
+      heartbeat: 25
+    WebParser:
+      server: ${top.kloping.ai.mcp.servers.WebSearch.server}
+      endpoint: /api/v1/mcps/WebParser/sse
+      token: ${top.kloping.ai.mcp.servers.WebSearch.token}
+      heartbeat: 180
+
+logging:
+  pattern:
+    console: "%clr([%thread]){blue} %clr(%-32.32logger{32}){magenta} %clr(%d{yyyy-MM-dd HH:mm:ss}){red} %clr(%-5p): %msg%n"
+    file: "[%thread] %-32.32logger{32} %d{yyyy-MM-dd HH:mm:ss} %-5p: %msg%n"
+  file:
+    name: ./logs/slf4j.log
+    path: logs
+  level:
+    root: info
+    top.kloping.code.gdpl2112.bot.*: debug
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 14

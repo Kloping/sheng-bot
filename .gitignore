@@ -170,3 +170,11 @@ fabric.properties
 *.iml
 out
 gen
+
+# Sensitive configuration files
+application-dev.yml
+application-prod.yml
+*.local.yml
+.env
+.env.local
+.env.*.local
