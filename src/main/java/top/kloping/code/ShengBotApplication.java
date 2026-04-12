@@ -11,7 +11,13 @@ package top.kloping.code;
 @org.springframework.boot.autoconfigure.SpringBootApplication
 public class ShengBotApplication {
     public static void main(String[] args) {
-        org.springframework.boot.SpringApplication.run(ShengBotApplication.class, args);
+        org.springframework.context.ConfigurableApplicationContext context = org.springframework.boot.SpringApplication.run(ShengBotApplication.class, args);
+        // 全局注册
+        String[] names = context.getBeanNamesForType(net.mamoe.mirai.event.ListenerHost.class);
+        for (String name : names) {
+            net.mamoe.mirai.event.ListenerHost listenerHost = context.getBean(name, net.mamoe.mirai.event.ListenerHost.class);
+            net.mamoe.mirai.event.GlobalEventChannel.INSTANCE.registerListenerHost(listenerHost);
+        }
     }
 
 }
