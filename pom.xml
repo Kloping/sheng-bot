@@ -188,7 +188,7 @@
                     <!-- 如果你有主类，这里是关键配置 -->
                     <archive>
                         <manifest>
-                            <mainClass>top.kloping.code.gdpl2112.SuperOneBotApplication</mainClass> <!-- 替换为你的主类全限定名 -->
+                            <mainClass>top.kloping.code.ShengBotApplication</mainClass> <!-- 替换为你的主类全限定名 -->
                         </manifest>
                     </archive>
                 </configuration>
