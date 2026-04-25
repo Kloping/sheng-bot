@@ -1,0 +1,91 @@
+spring:
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/sheng_bot?characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true
+    username: root
+    password: your-mysql-password
+  ai:
+    openai:
+      api-key: your-openai-api-key
+      base-url: https://api.openai.com
+      chat:
+        options:
+          model: gpt-4o-mini
+      embedding:
+        base-url: https://api.openai.com
+        api-key: your-embedding-api-key
+        options:
+          model: text-embedding-3-large
+    vectorstore:
+      milvus:
+        client:
+          host: 127.0.0.1
+          port: 9530
+          username: root
+          password: your-milvus-password
+        collectionName: sheng_bot_memory_event
+        initializeSchema: true
+        idFieldName: memory_id
+        auto-id: false
+
+bot:
+  account: 123456789
+  enabled: false
+  connection:
+    type: ws
+    ip: 127.0.0.1
+    port: 3001
+    token: your-bot-token
+    heart: 45
+    retry-times: 3
+    retry-wait-mills: 7000
+  group:
+    group-id: 123456789
+    allowed-groups: []
+    blacklisted-groups: []
+    respond-all: false
+  private:
+    enabled: true
+    allowed-users: []
+  personality:
+    name: 小生
+    description: 你是一个友好、乐于助人的 QQ 机器人助手。
+
+sheng:
+  memory:
+    short-term:
+      enabled: true
+      max-window-size: 20
+      ttl-minutes: 1440
+    long-term:
+      enabled: true
+      top-k: 3
+      similarity-threshold: 0.45
+      max-content-length: 280
+      event-max-messages: 6
+      event-min-messages: 3
+      event-chunk-overlap-messages: 2
+      event-merge-gap-minutes: 30
+  profile:
+    enabled: true
+    max-hobbies: 5
+    hobby-decay-lambda-per-day: 0.03
+    hobby-forget-threshold: 0.15
+  message:
+    image-storage:
+      enabled: true
+      base-directory: ./data/message-images
+      connect-timeout-seconds: 10
+      read-timeout-seconds: 30
+
+top.kloping.ai.mcp:
+  servers:
+    WebSearch:
+      server: https://dashscope.aliyuncs.com
+      endpoint: /api/v1/mcps/WebSearch/sse
+      token: your-dashscope-token
+      heartbeat: 25

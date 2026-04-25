@@ -178,3 +178,6 @@ application-prod.yml
 .env
 .env.local
 .env.*.local
+logs
+data
+**/test/**
