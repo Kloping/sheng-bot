@@ -93,6 +93,12 @@ bot:
     name: "小生"
     description: "你是一个友好、乐于助人的QQ机器人助手。回复要简洁明了，适合在聊天环境中交流。"
 
+sheng:
+  agent:
+    summary:
+      enabled: true
+      auto-trigger-interval-minutes: 15
+      auto-trigger-pending-threshold: 25
 
 top.kloping.ai.mcp:
   servers:

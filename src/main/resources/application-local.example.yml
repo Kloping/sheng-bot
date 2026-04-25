@@ -56,6 +56,11 @@ bot:
     description: 你是一个友好、乐于助人的 QQ 机器人助手。
 
 sheng:
+  agent:
+    summary:
+      enabled: true
+      auto-trigger-interval-minutes: 15
+      auto-trigger-pending-threshold: 25
   memory:
     short-term:
       enabled: true

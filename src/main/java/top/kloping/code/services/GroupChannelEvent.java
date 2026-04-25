@@ -3,7 +3,6 @@ package top.kloping.code.services;
 import com.alibaba.fastjson.JSON;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.ListenerHost;
 import net.mamoe.mirai.event.events.GroupMessageEvent;
 import net.mamoe.mirai.message.data.Image;
@@ -11,6 +10,7 @@ import net.mamoe.mirai.message.data.MessageSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import top.kloping.code.agent.AgentFacade;
 import top.kloping.code.config.BotProperties;
 import top.kloping.code.entity.MessageRecord;
 import top.kloping.code.service.IMessageRecordService;
@@ -46,6 +46,7 @@ public class GroupChannelEvent implements ListenerHost {
 
     private final IMessageRecordService messageRecordService;
     private final BotProperties botProperties;
+    private final AgentFacade agentFacade;
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
 
@@ -111,6 +112,7 @@ public class GroupChannelEvent implements ListenerHost {
             senderName = event.getSender().getNick();
         }
 
+        String normalizedPlainText = plainText.toString().trim();
         List<Map<String, String>> imageMetadataList = new ArrayList<>(imageMetadataByMd5.values());
         String imageMetadataJson = imageMetadataList.isEmpty() ? null : JSON.toJSONString(imageMetadataList);
 
@@ -121,7 +123,7 @@ public class GroupChannelEvent implements ListenerHost {
                 .setSenderId(event.getSender().getId())
                 .setSenderName(senderName)
                 .setRawText(event.getMessage().contentToString())
-                .setNormalizedText(plainText.toString().trim())
+                .setNormalizedText(normalizedPlainText)
                 .setMentionedBot(mentionedBot)
                 .setReplyToBot(replyToBot)
                 .setImageMessage(imageMessage)
@@ -132,6 +134,7 @@ public class GroupChannelEvent implements ListenerHost {
                 .setCreatedAt(LocalDateTime.now());
 
         saveMessageRecord(record);
+        triggerAutoSummary(record);
     }
 
     /**
@@ -146,6 +149,20 @@ public class GroupChannelEvent implements ListenerHost {
             // 同一消息重复投递时按幂等处理，避免唯一约束异常中断事件流程
             log.debug("消息记录已存在，忽略重复写入, sceneType={}, conversationId={}, messageId={}",
                     record.getSceneType(), record.getConversationId(), record.getMessageId());
+        }
+    }
+
+    /**
+     * 根据当前消息尝试触发自动摘要流程。
+     *
+     * @param currentRecord 当前刚写入的消息记录，非空
+     */
+    private void triggerAutoSummary(MessageRecord currentRecord) {
+        try {
+            agentFacade.triggerAutoSummary(currentRecord);
+        } catch (Exception ex) {
+            log.warn("自动摘要触发失败, conversationId={}, messageId={}",
+                    currentRecord.getConversationId(), currentRecord.getMessageId(), ex);
         }
     }
 
