@@ -33,7 +33,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 /**
  * 群消息自动摘要 Agent，负责按触发条件汇总未向量化消息并回写向量化标记。
@@ -269,7 +268,7 @@ public class MessageSummaryAgent {
         List<ImageInput> imageInputs = collectImageInputs(record);
         boolean emojiImageMessage = isEmojiImageMessage(record, messageText, imageInputs);
 
-        String prefix = index + ". [" + messageTime + "] " + speaker + ": ";
+        String prefix = index + ". [" + messageTime + "] " + speaker + "(" + record.getSenderId() + ")" + ": ";
         // 图片表情按普通文本消息处理，避免在多模态分支中被误判为需要图像理解。
         if (imageInputs.isEmpty() || emojiImageMessage) {
             String fallbackText = (messageText == null || messageText.isBlank())
