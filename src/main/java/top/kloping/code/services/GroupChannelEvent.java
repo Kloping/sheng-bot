@@ -33,7 +33,7 @@ import java.util.Map;
 
 /**
  * 群消息事件监听器，负责解析群消息并持久化消息记录。
- *
+ * <p>
  * <br/><strong>Created at 10:11<strong/>
  *
  * @author github kloping
@@ -92,6 +92,8 @@ public class GroupChannelEvent implements ListenerHost {
             if (m instanceof net.mamoe.mirai.message.data.At) {
                 if (((net.mamoe.mirai.message.data.At) m).getTarget() == event.getBot().getId()) {
                     mentionedBot = true;
+                } else {
+                    plainText.append(m.contentToString());
                 }
             } else if (m instanceof Image image) {
                 imageMessage = true;
@@ -183,7 +185,7 @@ public class GroupChannelEvent implements ListenerHost {
     /**
      * 收集图片元数据并按MD5去重缓存。
      *
-     * @param image 图片对象，非空
+     * @param image              图片对象，非空
      * @param imageMetadataByMd5 按MD5索引的图片元数据容器，非空
      */
     private void collectImageMetadata(Image image, Map<String, Map<String, String>> imageMetadataByMd5) {
