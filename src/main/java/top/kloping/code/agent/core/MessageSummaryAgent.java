@@ -12,6 +12,8 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
@@ -42,12 +44,16 @@ public class MessageSummaryAgent {
 
     private final IMessageRecordService messageRecordService;
     private final ChatClient chatClient;
+    private final VectorStore vectorStore;
 
     @Value("${sheng.agent.summary.enabled:true}")
     private boolean summaryEnabled;
 
     @Value("${sheng.agent.summary.auto-trigger-interval-minutes:15}")
     private long autoTriggerIntervalMinutes;
+
+    @Value("${sheng.agent.summary.auto-trigger-interval-threshold:12}")
+    private int autoTriggerIntervalThreshold;
 
     @Value("${sheng.agent.summary.auto-trigger-pending-threshold:25}")
     private int autoTriggerPendingThreshold;
@@ -81,6 +87,7 @@ public class MessageSummaryAgent {
             return;
         }
 
+        vectorizeAndStore(summary, pendingRecords);
         markRecordsVectorized(pendingRecords);
         log.info("自动摘要完成, reason={}, conversationId={}, currentMessageId={}, summarizedCount={}, summary={}",
                 evaluation.reason(), currentRecord.getConversationId(), currentRecord.getMessageId(), pendingRecords.size(), summary);
@@ -93,12 +100,16 @@ public class MessageSummaryAgent {
      * @return 触发评估结果
      */
     private TriggerEvaluation evaluateTrigger(MessageRecord currentRecord) {
+        long pendingCountIncludingCurrent = countPendingRecordsIncludingCurrent(currentRecord);
+
         MessageRecord previousRecord = loadPreviousRecord(currentRecord);
         if (previousRecord != null && isIntervalExceeded(previousRecord.getReceivedAt(), currentRecord.getReceivedAt())) {
-            return new TriggerEvaluation(true, "interval_exceeded");
+            // 时间间隔超过阈值时，还需要满足最小消息数量限制
+            if (pendingCountIncludingCurrent >= Math.max(1, autoTriggerIntervalThreshold)) {
+                return new TriggerEvaluation(true, "interval_exceeded_with_enough_messages");
+            }
         }
 
-        long pendingCountIncludingCurrent = countPendingRecordsIncludingCurrent(currentRecord);
         if (pendingCountIncludingCurrent >= Math.max(1, autoTriggerPendingThreshold)) {
             return new TriggerEvaluation(true, "pending_threshold_reached");
         }
@@ -500,6 +511,40 @@ public class MessageSummaryAgent {
             return MimeTypeUtils.IMAGE_JPEG;
         }
         return MimeTypeUtils.IMAGE_JPEG;
+    }
+
+    /**
+     * 将总结结果向量化并存储到向量数据库中。
+     *
+     * @param summary        摘要文本
+     * @param pendingRecords 参与摘要的消息记录
+     */
+    private void vectorizeAndStore(String summary, List<MessageRecord> pendingRecords) {
+        try {
+            List<Long> recordIds = pendingRecords.stream()
+                    .map(MessageRecord::getId)
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            if (recordIds.isEmpty()) {
+                return;
+            }
+
+            // 构建 Document，包含摘要文本和消息ID列表元数据
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("message_ids", recordIds);
+            metadata.put("conversation_id", pendingRecords.get(0).getConversationId());
+            metadata.put("scene_type", GROUP_SCENE_TYPE);
+            metadata.put("created_at", LocalDateTime.now().toString());
+
+            Document document = new Document(summary, metadata);
+
+            // 存储到向量数据库
+            vectorStore.add(List.of(document));
+            log.info("摘要已存入向量数据库, summarizedCount={}, docId={}", recordIds.size(), document.getId());
+        } catch (Exception ex) {
+            log.error("向量化存储摘要失败", ex);
+        }
     }
 
     /**

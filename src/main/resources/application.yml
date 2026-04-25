@@ -98,6 +98,7 @@ sheng:
     summary:
       enabled: true
       auto-trigger-interval-minutes: 15
+      auto-trigger-interval-threshold: 12
       auto-trigger-pending-threshold: 25
 
 top.kloping.ai.mcp:
