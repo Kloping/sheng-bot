@@ -221,7 +221,7 @@ public class MessageSummaryAgent {
     private List<Message> buildAiMessageQueue(List<MessageRecord> records) {
         log.info("开始构建AI消息队列，共{}条消息", records.size());
         List<Message> queue = new ArrayList<>();
-        queue.add(new SystemMessage("你是群聊消息整理助手。接下来会收到按时间顺序排列的群聊记录，请结合文本与图片内容给出客观总结。"));
+        queue.add(new SystemMessage("你是高度专业的群聊简报助手。你的任务是将杂乱的聊天记录提炼为高信息密度的摘要，用于长期存储和语义检索。"));
 
         int index = 1;
         for (MessageRecord record : records) {
@@ -229,7 +229,15 @@ public class MessageSummaryAgent {
             index++;
         }
         log.info("AI消息队列构建完毕，共{}条消息", queue.size());
-        queue.add(new UserMessage("请基于以上消息输出总结：\n1) 2-6条要点\n2) 若存在明确任务或行动项，单独列出\n3) 禁止编造未出现的信息"));
+
+        String prompt = """
+                请根据以上聊天记录生成一份【语义检索友好】的总结：
+                1. **核心话题**：用简练的语言描述讨论的主题（包含具体的项目名、技术点或事件）。
+                2. **要点总结**：列出 3-6 条核心内容，需保留关键发言人和他们的核心观点。
+                3. **行动/结论**：若有明确的决策、约定的时间或待办事项，请务必列出。
+                4. **约束**：使用客观中立的第三人称，禁止使用‘大家讨论了’等泛泛而谈的废话，确保摘要包含足够的关键词以利于搜索。""";
+
+        queue.add(new UserMessage(prompt));
         return queue;
     }
 
