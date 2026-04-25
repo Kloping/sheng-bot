@@ -30,6 +30,10 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 /**
  * 群消息自动摘要 Agent，负责按触发条件汇总未向量化消息并回写向量化标记。
@@ -45,6 +49,8 @@ public class MessageSummaryAgent {
     private final IMessageRecordService messageRecordService;
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
+
+    private final ConcurrentHashMap<Long, Lock> conversationLocks = new ConcurrentHashMap<>();
 
     @Value("${sheng.agent.summary.enabled:true}")
     private boolean summaryEnabled;
@@ -71,26 +77,34 @@ public class MessageSummaryAgent {
             return;
         }
 
-        TriggerEvaluation evaluation = evaluateTrigger(currentRecord);
-        if (!evaluation.triggered()) {
-            return;
-        }
+        Long conversationId = currentRecord.getConversationId();
+        Lock lock = conversationLocks.computeIfAbsent(conversationId, k -> new ReentrantLock());
 
-        List<MessageRecord> pendingRecords = loadPendingRecordsBeforeCurrent(currentRecord);
-        if (pendingRecords.isEmpty()) {
-            // 触发条件满足但无可处理消息时直接返回，避免生成空摘要。
-            return;
-        }
+        // 使用 lock() 确保上一个摘要未完成前，后续触发会排队等待
+        lock.lock();
+        try {
+            TriggerEvaluation evaluation = evaluateTrigger(currentRecord);
+            if (!evaluation.triggered()) {
+                return;
+            }
 
-        String summary = summarizeWithLlm(pendingRecords);
-        if (summary == null || summary.isBlank()) {
-            return;
-        }
+            List<MessageRecord> pendingRecords = loadPendingRecordsBeforeCurrent(currentRecord);
+            if (pendingRecords.isEmpty()) {
+                return;
+            }
 
-        vectorizeAndStore(summary, pendingRecords);
-        markRecordsVectorized(pendingRecords);
-        log.info("自动摘要完成, reason={}, conversationId={}, currentMessageId={}, summarizedCount={}, summary={}",
-                evaluation.reason(), currentRecord.getConversationId(), currentRecord.getMessageId(), pendingRecords.size(), summary);
+            String summary = summarizeWithLlm(pendingRecords);
+            if (summary == null || summary.isBlank()) {
+                return;
+            }
+
+            vectorizeAndStore(summary, pendingRecords);
+            markRecordsVectorized(pendingRecords);
+            log.info("自动摘要完成, reason={}, conversationId={}, currentMessageId={}, summarizedCount={}, summary={}",
+                    evaluation.reason(), currentRecord.getConversationId(), currentRecord.getMessageId(), pendingRecords.size(), summary);
+        } finally {
+            lock.unlock();
+        }
     }
 
     /**
@@ -199,9 +213,7 @@ public class MessageSummaryAgent {
         List<Message> aiMessageQueue = buildAiMessageQueue(records);
 
         try {
-            String summary = chatClient.prompt(new Prompt(aiMessageQueue))
-                    .call()
-                    .content();
+            String summary = chatClient.prompt(new Prompt(aiMessageQueue)).call().content();
             if (summary == null || summary.isBlank()) {
                 return "";
             }
