@@ -54,17 +54,17 @@ public class GroupPlanningAgent {
     /**
      * 根据用户输入消息和可用工具进行逻辑规划。
      *
-     * @param inputMessages 用户输入的相关消息列表 非空
+     * @param inputMessages  用户输入的相关消息列表 非空
      * @param availableTools 当前可用工具映射，key-工具名，value-工具描述
      * @return 规划结果，解析失败则返回null
-     *
+     * <p>
      * TODO: 待后续确定具体的触发时机与组装逻辑
      */
     public PlanningResult plan(List<MessageRecord> inputMessages, Map<String, String> availableTools) {
         if (inputMessages == null || inputMessages.isEmpty()) {
             return null;
         }
-        log.info("准备规划：{} 相关问题", inputMessages.getLast());
+        log.info("准备规划：{} 相关问题", inputMessages.get(inputMessages.size() - 1));
         StringBuilder userPromptBuilder = new StringBuilder();
         userPromptBuilder.append("用户输入以下相关内容:\n");
         for (MessageRecord msg : inputMessages) {
@@ -100,6 +100,8 @@ public class GroupPlanningAgent {
                         .replaceAll("```$", "")
                         .trim();
                 return JSON.parseObject(responseStr, PlanningResult.class);
+            } else {
+                log.error("规划结果为空");
             }
         } catch (Exception e) {
             log.error("调用规划Agent失败", e);
