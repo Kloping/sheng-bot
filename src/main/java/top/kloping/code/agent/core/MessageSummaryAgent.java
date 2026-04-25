@@ -15,23 +15,19 @@ import org.springframework.ai.content.Media;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
-import top.kloping.code.entity.MessageRecord;
-import top.kloping.code.service.IMessageRecordService;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
+import top.kloping.code.entity.MessageRecord;
+import top.kloping.code.service.IMessageRecordService;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.time.Duration;
-import java.time.LocalDateTime;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 
 /**
  * 群消息自动摘要 Agent，负责按触发条件汇总未向量化消息并回写向量化标记。
@@ -42,6 +38,7 @@ import java.nio.file.Paths;
 public class MessageSummaryAgent {
 
     private static final String GROUP_SCENE_TYPE = "GROUP";
+    private static final DateTimeFormatter MESSAGE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm");
 
     private final IMessageRecordService messageRecordService;
     private final ChatClient chatClient;
@@ -132,7 +129,7 @@ public class MessageSummaryAgent {
      * 判断当前消息与上一条消息间隔是否超过阈值。
      *
      * @param previousReceivedAt 上一条消息接收时间
-     * @param currentReceivedAt 当前消息接收时间
+     * @param currentReceivedAt  当前消息接收时间
      * @return true-超过阈值；false-未超过阈值
      */
     private boolean isIntervalExceeded(LocalDateTime previousReceivedAt, LocalDateTime currentReceivedAt) {
@@ -211,6 +208,7 @@ public class MessageSummaryAgent {
      * @return AI消息队列
      */
     private List<Message> buildAiMessageQueue(List<MessageRecord> records) {
+        log.info("开始构建AI消息队列，共{}条消息", records.size());
         List<Message> queue = new ArrayList<>();
         queue.add(new SystemMessage("你是群聊消息整理助手。接下来会收到按时间顺序排列的群聊记录，请结合文本与图片内容给出客观总结。"));
 
@@ -219,7 +217,7 @@ public class MessageSummaryAgent {
             queue.add(buildOrderedUserMessage(record, index));
             index++;
         }
-
+        log.info("AI消息队列构建完毕，共{}条消息", queue.size());
         queue.add(new UserMessage("请基于以上消息输出总结：\n1) 2-6条要点\n2) 若存在明确任务或行动项，单独列出\n3) 禁止编造未出现的信息"));
         return queue;
     }
@@ -228,18 +226,19 @@ public class MessageSummaryAgent {
      * 构建单条按顺序入队的用户消息。
      *
      * @param record 消息记录
-     * @param index 队列内顺序序号
+     * @param index  队列内顺序序号
      * @return 用户消息
      */
     private UserMessage buildOrderedUserMessage(MessageRecord record, int index) {
         String speaker = (record.getSenderName() == null || record.getSenderName().isBlank())
                 ? String.valueOf(record.getSenderId())
                 : record.getSenderName();
+        String messageTime = formatRecordTime(record);
         String messageText = resolveRecordText(record);
         List<ImageInput> imageInputs = collectImageInputs(record);
         boolean emojiImageMessage = isEmojiImageMessage(record, messageText, imageInputs);
 
-        String prefix = index + ". " + speaker + ": ";
+        String prefix = index + ". [" + messageTime + "] " + speaker + ": ";
         // 图片表情按普通文本消息处理，避免在多模态分支中被误判为需要图像理解。
         if (imageInputs.isEmpty() || emojiImageMessage) {
             String fallbackText = (messageText == null || messageText.isBlank())
@@ -265,6 +264,24 @@ public class MessageSummaryAgent {
                 .text(prefix + fallbackText)
                 .media(mediaList)
                 .build();
+    }
+
+    /**
+     * 格式化消息时间。
+     *
+     * @param record 消息记录
+     * @return 标准时间字符串；无时间时返回“未知时间”
+     */
+    private String formatRecordTime(MessageRecord record) {
+        if (record == null) {
+            return "未知时间";
+        }
+        // 优先使用消息接收时间，缺失时回退创建时间，保证入队文本具备时间上下文。
+        LocalDateTime preferredTime = record.getReceivedAt() != null ? record.getReceivedAt() : record.getCreatedAt();
+        if (preferredTime == null) {
+            return "未知时间";
+        }
+        return preferredTime.format(MESSAGE_TIME_FORMATTER);
     }
 
     /**
@@ -435,7 +452,7 @@ public class MessageSummaryAgent {
     /**
      * 判断图片消息是否属于应按文本处理的“图片表情”。
      *
-     * @param record 消息记录
+     * @param record      消息记录
      * @param messageText 消息文本
      * @param imageInputs 图片输入列表
      * @return true-按文本处理；false-按多模态图片处理
@@ -515,7 +532,7 @@ public class MessageSummaryAgent {
      * 自动触发评估结果。
      *
      * @param triggered 是否触发
-     * @param reason 触发原因
+     * @param reason    触发原因
      */
     private record TriggerEvaluation(boolean triggered, String reason) {
     }
@@ -523,7 +540,7 @@ public class MessageSummaryAgent {
     /**
      * 图片输入信息，包含URL与本地路径。
      *
-     * @param url 图片网络地址
+     * @param url       图片网络地址
      * @param localPath 图片本地路径
      */
     private record ImageInput(String url, String localPath) {
