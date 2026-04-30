@@ -8,6 +8,11 @@ spring:
     username: root
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
   ai:
     openai:
       api-key: ${OPENAI_API_KEY}
@@ -37,6 +42,7 @@ spring:
         collectionName: ${MILVUS_COLLECTION_NAME}
         idFieldName: id
         auto-id: true
+        initialize-schema: true
         embeddingDimension: 1024
         indexType: IVF_FLAT
         metricType: COSINE
@@ -73,7 +79,6 @@ bot:
     retry-times: 3
     # 重试等待时间(毫秒)
     retry-wait-mills: 7000
-  # 群聊配置
   group:
     group-id: ${TEST_GROUP_ID}
     # 允许响应的群列表（为空则响应所有群）
@@ -82,17 +87,19 @@ bot:
     blacklisted-groups: [ ]
     # 是否响应所有消息
     respond-all: false
-  # 私聊配置
   private:
     # 是否响应私聊
     enabled: true
     # 允许私聊的用户列表（为空则允许所有）
     allowed-users: [ ]
-  # AI人格设定
   personality:
     name: "小生"
     description: "你是一个友好、乐于助人的QQ机器人助手。回复要简洁明了，适合在聊天环境中交流。"
 
+sheng:
+  message:
+    merge-window-minutes: 3
+    vectorization-content-length-threshold: 320
 
 top.kloping.ai.mcp:
   servers:
