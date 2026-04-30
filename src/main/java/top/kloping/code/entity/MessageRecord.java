@@ -40,6 +40,13 @@ public class MessageRecord {
     @TableField("content")
     private String content;
 
+    /**
+     * 消息中包含的图片MD5列表，多个MD5以逗号分隔。
+     * 用于从本地 ./data/message-images 目录读取对应图片供 AI 大模型理解。
+     */
+    @TableField("image_md5_list")
+    private String imageMd5List;
+
     @TableField("message_time")
     private LocalDateTime messageTime;
 

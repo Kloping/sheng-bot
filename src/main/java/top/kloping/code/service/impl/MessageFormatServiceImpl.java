@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 消息格式化服务实现类。
@@ -20,6 +22,12 @@ import java.util.List;
 public class MessageFormatServiceImpl implements MessageFormatService {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /** 图片占位符正则，匹配 [图片:md5] 格式。 */
+    private static final Pattern IMAGE_PLACEHOLDER_PATTERN = Pattern.compile("\\[图片:[0-9a-f]+\\]");
+
+    /** 向量化时每张图片按此字数计入内容长度。 */
+    private static final int IMAGE_CHAR_COUNT = 25;
 
     private final MessageStorageProperties messageStorageProperties;
 
@@ -49,7 +57,7 @@ public class MessageFormatServiceImpl implements MessageFormatService {
             }
 
             // 只有同一发送人且时间差未超过配置窗口时，才会把消息合并到同一段落。
-            if (previousRecord != null && canMerge(previousRecord, record)) {
+            if (canMerge(previousRecord, record)) {
                 currentBlock.append(System.lineSeparator())
                         .append(currentPadding)
                         .append(applyContinuationPadding(normalizedContent, currentPadding));
@@ -127,5 +135,29 @@ public class MessageFormatServiceImpl implements MessageFormatService {
 
     private String applyContinuationPadding(String content, String padding) {
         return content.replace("\n", System.lineSeparator() + padding);
+    }
+
+    /**
+     * 计算格式化文本的有效内容长度，用于向量化分段阈值判断。
+     * 每个图片占位符 [图片:md5] 按 25 字计入，其余文本按实际字数计入。
+     *
+     * @param formattedContent 格式化后的文本内容，允许为空
+     * @return 有效内容长度
+     */
+    @Override
+    public int effectiveContentLength(String formattedContent) {
+        if (formattedContent == null || formattedContent.isEmpty()) {
+            return 0;
+        }
+        Matcher matcher = IMAGE_PLACEHOLDER_PATTERN.matcher(formattedContent);
+        int imageCount = 0;
+        int imagePlaceholderLength = 0;
+        while (matcher.find()) {
+            imageCount++;
+            imagePlaceholderLength += matcher.group().length();
+        }
+        // 非图片部分按实际字数，图片部分每个按固定字数计入。
+        int nonImageLength = formattedContent.length() - imagePlaceholderLength;
+        return nonImageLength + imageCount * IMAGE_CHAR_COUNT;
     }
 }

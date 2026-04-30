@@ -18,4 +18,13 @@ public interface MessageFormatService {
      * @return 格式化后的文本内容
      */
     String formatConversationMessages(List<MessageRecord> records);
+
+    /**
+     * 计算格式化文本的有效内容长度，用于向量化分段阈值判断。
+     * 每个图片占位符 [图片:md5] 按 25 字计入，其余文本按实际字数计入。
+     *
+     * @param formattedContent 格式化后的文本内容，允许为空
+     * @return 有效内容长度
+     */
+    int effectiveContentLength(String formattedContent);
 }

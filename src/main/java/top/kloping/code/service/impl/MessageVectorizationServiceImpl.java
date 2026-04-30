@@ -65,8 +65,9 @@ public class MessageVectorizationServiceImpl implements MessageVectorizationServ
             }
 
             String formattedContent = messageFormatService.formatConversationMessages(currentSegment);
+            int effectiveLength = messageFormatService.effectiveContentLength(formattedContent);
             // 仅当剩余消息整体还未达到可切段阈值时，才继续等待后续消息进入同一批次。
-            if (formattedContent.length() < contentLengthThreshold
+            if (effectiveLength < contentLengthThreshold
                     && startIndex + currentSegment.size() >= pendingRecords.size()) {
                 return;
             }
@@ -86,7 +87,7 @@ public class MessageVectorizationServiceImpl implements MessageVectorizationServ
 
             vectorStore.add(List.of(buildDocument(sceneType, conversationId, currentSegment, formattedContent)));
             messageRecordService.markVectorized(recordIds, vectorizedAt);
-            log.info("消息批量向量化完成, sceneType={}, conversationId={}, messageCount={}, contentLength={}", sceneType, conversationId, currentSegment.size(), formattedContent.length());
+            log.info("消息批量向量化完成, sceneType={}, conversationId={}, messageCount={}, effectiveLength={}", sceneType, conversationId, currentSegment.size(), effectiveLength);
             startIndex += currentSegment.size();
         }
     }
@@ -104,15 +105,17 @@ public class MessageVectorizationServiceImpl implements MessageVectorizationServ
         for (int index = startIndex; index < pendingRecords.size(); index++) {
             segment.add(pendingRecords.get(index));
             String formattedContent = messageFormatService.formatConversationMessages(segment);
+            int effectiveLength = messageFormatService.effectiveContentLength(formattedContent);
             // 当累计内容首次跨过阈值时，对比跨过前后两段，选取更接近目标字数的一段。
-            if (formattedContent.length() >= contentLengthThreshold) {
+            if (effectiveLength >= contentLengthThreshold) {
                 if (segment.size() == 1) {
                     return new ArrayList<>(segment);
                 }
                 List<MessageRecord> previousSegment = new ArrayList<>(segment.subList(0, segment.size() - 1));
                 String previousFormattedContent = messageFormatService.formatConversationMessages(previousSegment);
-                int previousDistance = Math.abs(previousFormattedContent.length() - contentLengthThreshold);
-                int currentDistance = Math.abs(formattedContent.length() - contentLengthThreshold);
+                int previousEffectiveLength = messageFormatService.effectiveContentLength(previousFormattedContent);
+                int previousDistance = Math.abs(previousEffectiveLength - contentLengthThreshold);
+                int currentDistance = Math.abs(effectiveLength - contentLengthThreshold);
                 if (previousDistance <= currentDistance) {
                     return previousSegment;
                 }
