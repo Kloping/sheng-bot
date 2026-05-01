@@ -15,14 +15,14 @@ spring:
     baseline-version: 0
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY}
-      base-url: ${OPENAI_BASE_URL}
+      api-key: ${OPENAI_API_KEY} # 注册即送余额 可自主测试
+      base-url: ${OPENAI_BASE_URL:https://ai.kloping.top}
       chat:
         completions-path: /v1/chat/completions
         options:
-          model: ${OPENAI_MODEL} # 必须多模态 能传入 图片文本的
+          model: ${OPENAI_MODEL:Kimi-k2.6} # 必须多模态 能传入 图片文本的
           temperature: 0.1
-          max-tokens: 3000
+          max-tokens: 10240
           stream-usage: false
       embedding:
         base-url: ${OPENAI_EMBEDING_BASE_URL} # 更适合配置多厂商
@@ -94,7 +94,7 @@ bot:
     allowed-users: [ ]
   personality:
     name: "小生"
-    description: "你是一个友好、乐于助人的QQ机器人助手。回复要简洁明了，适合在聊天环境中交流。"
+    description: "你是一个友好、乐于助人的QQ机器人助手。回复要简洁明了,不要啰嗦,直接行动,最终回复尽量30字以内."
 
 sheng:
   message:
