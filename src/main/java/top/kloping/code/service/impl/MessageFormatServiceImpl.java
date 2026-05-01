@@ -109,9 +109,12 @@ public class MessageFormatServiceImpl implements MessageFormatService {
         LocalDateTime messageTime = record != null && record.getMessageTime() != null ? record.getMessageTime() : LocalDateTime.now();
         Long senderId = record != null ? record.getSenderId() : null;
         String senderName = record != null ? record.getSenderName() : null;
+        // 机器人自身消息追加 [bot] 标记，便于 AI 区分消息来源。
+        String botMark = record != null && Boolean.TRUE.equals(record.getSelfSent()) ? "[bot]" : "";
         return DATE_TIME_FORMATTER.format(messageTime)
                 + " "
                 + safeSenderName(senderName)
+                + botMark
                 + "("
                 + (senderId == null ? 0L : senderId)
                 + "): ";

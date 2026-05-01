@@ -90,4 +90,29 @@ public class MessageRecordServiceImpl extends ServiceImpl<MessageRecordMapper, M
                 .set(MessageRecord::getVectorizedAt, actualVectorizedAt)
                 .set(MessageRecord::getUpdatedAt, actualVectorizedAt));
     }
+
+    /**
+     * 按消息时间正序读取指定会话最近N条消息（含已/未向量化），用作 AI 对话上下文。
+     *
+     * @param sceneType      会话场景类型，不能为空
+     * @param conversationId 会话ID，不能为空
+     * @param limit          读取上限，必须大于0
+     * @return 最近N条消息列表，按时间正序排列
+     */
+    @Override
+    public List<MessageRecord> listRecentMessages(String sceneType, String conversationId, int limit) {
+        int safeLimit = Math.max(1, limit);
+        // 先按时间倒序取最近N条，再反转为正序，以便 AI 按时间线阅读。
+        List<MessageRecord> descList = list(Wrappers.<MessageRecord>lambdaQuery()
+                .eq(MessageRecord::getSceneType, sceneType)
+                .eq(MessageRecord::getConversationId, conversationId)
+                .orderByDesc(MessageRecord::getMessageTime)
+                .orderByDesc(MessageRecord::getId)
+                .last("LIMIT " + safeLimit));
+        if (descList.size() <= 1) {
+            return descList;
+        }
+        java.util.Collections.reverse(descList);
+        return descList;
+    }
 }

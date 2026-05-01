@@ -49,4 +49,14 @@ public interface MessageRecordService extends IService<MessageRecord> {
      * @return 更新是否成功
      */
     boolean markVectorized(Collection<Long> ids, LocalDateTime vectorizedAt);
+
+    /**
+     * 按消息时间正序读取指定会话最近N条消息（含已/未向量化），用作 AI 对话上下文。
+     *
+     * @param sceneType      会话场景类型，不能为空
+     * @param conversationId 会话ID，不能为空
+     * @param limit          读取上限，必须大于0
+     * @return 最近N条消息列表，按时间正序排列
+     */
+    List<MessageRecord> listRecentMessages(String sceneType, String conversationId, int limit);
 }

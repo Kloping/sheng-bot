@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import net.mamoe.mirai.event.EventHandler;
 import net.mamoe.mirai.event.SimpleListenerHost;
 import net.mamoe.mirai.event.events.GroupMessageEvent;
+import net.mamoe.mirai.event.events.GroupMessageSyncEvent;
+import net.mamoe.mirai.message.data.At;
 import net.mamoe.mirai.message.data.FlashImage;
 import net.mamoe.mirai.message.data.Image;
 import net.mamoe.mirai.message.data.MessageChain;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Component;
 import top.kloping.code.config.BotProperties;
 import top.kloping.code.entity.MessageRecord;
 import top.kloping.code.enums.MessageSceneType;
+import top.kloping.code.service.AiChatService;
 import top.kloping.code.service.MessageRecordService;
 import top.kloping.code.service.MessageVectorizationService;
 
@@ -48,6 +51,7 @@ public class GroupMessageEventListener extends SimpleListenerHost {
     private final BotProperties botProperties;
     private final MessageRecordService messageRecordService;
     private final MessageVectorizationService messageVectorizationService;
+    private final AiChatService aiChatService;
 
     /**
      * 覆写 SimpleListenerHost 异常处理，避免协程异常导致监听器崩溃。
@@ -61,7 +65,7 @@ public class GroupMessageEventListener extends SimpleListenerHost {
     }
 
     /**
-     * 处理群消息事件。
+     * 处理群消息事件（他人发送）。
      *
      * @param event 群消息事件，不能为空
      */
@@ -82,6 +86,96 @@ public class GroupMessageEventListener extends SimpleListenerHost {
             messageVectorizationService.tryVectorizeConversation(record.getSceneType(), record.getConversationId());
         } catch (DuplicateKeyException ex) {
             log.debug("群消息重复投递，已忽略, groupId={}, messageId={}", groupId, record.getMessageId());
+        }
+
+        // 检测 @机器人，触发 AI 对话
+        if (isAtBot(event.getMessage())) {
+            String userMessage = extractUserMessage(event.getMessage());
+            String sceneType = MessageSceneType.GROUP.getCode();
+            String conversationId = String.valueOf(groupId);
+            String reply = aiChatService.handleAtBotChat(sceneType, conversationId, userMessage, groupId);
+            if (reply != null && !reply.isBlank()) {
+                event.getGroup().sendMessage(reply);
+            }
+        }
+    }
+
+    /**
+     * 判断消息链中是否包含 @机器人。
+     *
+     * @param chain 消息链，不能为空
+     * @return 是否 @了机器人
+     */
+    private boolean isAtBot(MessageChain chain) {
+        Long botAccount = botProperties.getAccount();
+        if (botAccount == null) {
+            return false;
+        }
+        for (SingleMessage element : chain) {
+            if (element instanceof At at) {
+                if (at.getTarget() == botAccount) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 提取用户消息文本，去除 @机器人 部分。
+     *
+     * @param chain 消息链，不能为空
+     * @return 去除 @后的用户消息文本
+     */
+    private String extractUserMessage(MessageChain chain) {
+        Long botAccount = botProperties.getAccount();
+        StringBuilder sb = new StringBuilder();
+        for (SingleMessage element : chain) {
+            // 跳过闪照
+            if (element instanceof FlashImage) {
+                continue;
+            }
+            // 跳过 @机器人
+            if (element instanceof At at && botAccount != null && at.getTarget() == botAccount) {
+                continue;
+            }
+            // 图片替换为 [图片:md5] 格式
+            if (element instanceof Image image) {
+                String md5 = downloadAndComputeMd5(image);
+                if (md5 != null && !md5.isEmpty()) {
+                    sb.append("[图片:").append(md5).append("]");
+                } else {
+                    sb.append("[图片]");
+                }
+            } else {
+                sb.append(element.contentToString());
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    /**
+     * 处理机器人自身发送的群消息同步事件，标记 selfSent=true 以便 AI 区分。
+     *
+     * @param event 群消息同步事件，不能为空
+     */
+    @EventHandler
+    public void onGroupMessageSync(GroupMessageSyncEvent event) {
+        long groupId = event.getGroup().getId();
+        if (!shouldHandleGroup(groupId)) {
+            return;
+        }
+
+        MessageRecord record = buildSelfSentMessageRecord(event);
+        if (record.getContent().isBlank()) {
+            return;
+        }
+
+        try {
+            messageRecordService.save(record);
+            messageVectorizationService.tryVectorizeConversation(record.getSceneType(), record.getConversationId());
+        } catch (DuplicateKeyException ex) {
+            log.debug("机器人消息重复投递，已忽略, groupId={}, messageId={}", groupId, record.getMessageId());
         }
     }
 
@@ -115,6 +209,39 @@ public class GroupMessageEventListener extends SimpleListenerHost {
         }
 
         record.setMessageTime(LocalDateTime.ofInstant(Instant.ofEpochSecond(event.getTime()), ZoneId.systemDefault()));
+        record.setSelfSent(Boolean.FALSE);
+        record.setVectorized(Boolean.FALSE);
+        record.setCreatedAt(now);
+        record.setUpdatedAt(now);
+        return record;
+    }
+
+    /**
+     * 构建机器人自身发送消息的 MessageRecord，selfSent 标记为 true。
+     *
+     * @param event 群消息同步事件，不能为空
+     * @return 消息记录实体
+     */
+    private MessageRecord buildSelfSentMessageRecord(GroupMessageSyncEvent event) {
+        LocalDateTime now = LocalDateTime.now();
+        MessageRecord record = new MessageRecord();
+        record.setSceneType(MessageSceneType.GROUP.getCode());
+        record.setConversationId(String.valueOf(event.getGroup().getId()));
+        record.setConversationName(event.getGroup().getName());
+        record.setMessageId(buildSyncMessageId(event));
+        record.setSenderId(event.getBot().getId());
+        record.setSenderName(event.getBot().getNick());
+
+        // 提取图片信息并下载保存，content 中图片替换为 [图片:md5] 格式。
+        List<String> md5List = new ArrayList<>();
+        String processedContent = processImages(event.getMessage(), md5List);
+        record.setContent(normalizeContent(processedContent));
+        if (!md5List.isEmpty()) {
+            record.setImageMd5List(String.join(",", md5List));
+        }
+
+        record.setMessageTime(LocalDateTime.ofInstant(Instant.ofEpochSecond(event.getTime()), ZoneId.systemDefault()));
+        record.setSelfSent(Boolean.TRUE);
         record.setVectorized(Boolean.FALSE);
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
@@ -256,6 +383,28 @@ public class GroupMessageEventListener extends SimpleListenerHost {
                     .collect(Collectors.joining("-"));
         }
         return event.getSender().getId()
+                + "-"
+                + event.getTime()
+                + "-"
+                + Integer.toUnsignedString(event.getMessage().contentToString().hashCode());
+    }
+
+    /**
+     * 为 GroupMessageSyncEvent 构建消息唯一ID。
+     * 使用 bot ID + 时间戳 + 内容哈希，确保与普通消息 ID 不冲突。
+     *
+     * @param event 群消息同步事件，不能为空
+     * @return 消息唯一ID
+     */
+    private String buildSyncMessageId(GroupMessageSyncEvent event) {
+        int[] ids = event.getSource().getIds();
+        if (ids != null && ids.length > 0) {
+            return "sync-" + Arrays.stream(ids)
+                    .mapToObj(String::valueOf)
+                    .collect(Collectors.joining("-"));
+        }
+        return "sync-"
+                + event.getBot().getId()
                 + "-"
                 + event.getTime()
                 + "-"

@@ -47,6 +47,13 @@ public class MessageRecord {
     @TableField("image_md5_list")
     private String imageMd5List;
 
+    /**
+     * 是否为机器人自身发送的消息。
+     * 用于 AI 区分消息来源，机器人自身消息在格式化时会带 [bot] 标记。
+     */
+    @TableField("self_sent")
+    private Boolean selfSent;
+
     @TableField("message_time")
     private LocalDateTime messageTime;
 
