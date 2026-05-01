@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import top.kloping.code.config.BotProperties;
 import top.kloping.code.entity.MessageRecord;
 import top.kloping.code.enums.MessageSceneType;
+import top.kloping.code.service.ActiveConversationTracker;
 import top.kloping.code.service.AiChatService;
 import top.kloping.code.service.MessageRecordService;
 import top.kloping.code.service.MessageVectorizationService;
@@ -52,6 +53,7 @@ public class GroupMessageEventListener extends SimpleListenerHost {
     private final MessageRecordService messageRecordService;
     private final MessageVectorizationService messageVectorizationService;
     private final AiChatService aiChatService;
+    private final ActiveConversationTracker activeConversationTracker;
 
     /**
      * 覆写 SimpleListenerHost 异常处理，避免协程异常导致监听器崩溃。
@@ -88,14 +90,31 @@ public class GroupMessageEventListener extends SimpleListenerHost {
             log.debug("群消息重复投递，已忽略, groupId={}, messageId={}", groupId, record.getMessageId());
         }
 
+        String sceneType = MessageSceneType.GROUP.getCode();
+        String conversationId = String.valueOf(groupId);
+
         // 检测 @机器人，触发 AI 对话
         if (isAtBot(event.getMessage())) {
             String userMessage = extractUserMessage(event.getMessage());
-            String sceneType = MessageSceneType.GROUP.getCode();
-            String conversationId = String.valueOf(groupId);
             String reply = aiChatService.handleAtBotChat(sceneType, conversationId, userMessage, groupId);
             if (reply != null && !reply.isBlank()) {
                 event.getGroup().sendMessage(reply);
+                // 激活活跃对话跟踪，后续消息无需 @即可自主判断
+                activeConversationTracker.activate(groupId);
+            }
+            return;
+        }
+
+        // 非 @机器人消息：检查是否处于活跃对话窗口，自主判断是否回复
+        if (activeConversationTracker.shouldCheckAutonomous(groupId)) {
+            String autoReply = aiChatService.handleAutonomousChat(sceneType, conversationId, record.getContent(), groupId);
+            if (autoReply != null && !autoReply.isBlank()) {
+                event.getGroup().sendMessage(autoReply);
+                // AI 自主回复后重置窗口
+                activeConversationTracker.activate(groupId);
+            } else {
+                // AI 选择不回复，递增未回复计数
+                activeConversationTracker.incrementNoReply(groupId);
             }
         }
     }
